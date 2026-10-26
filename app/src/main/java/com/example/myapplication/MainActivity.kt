@@ -25,6 +25,8 @@ import com.example.myapplication.ui.theme.MyApplicationTheme
 import androidx.compose.material3.Checkbox
 import androidx.compose.foundation.layout.Row
 import androidx.compose.ui.Alignment
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.ui.semantics.Role
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -42,10 +44,17 @@ class MainActivity : ComponentActivity() {
                             Text("Consent and Privacy", style = MaterialTheme.typography.headlineMedium)
                             Text("Face samples will be used to recognize students and record attendance.")
                             Text("Face data is sensitive biometric information. The app will store it securely on this device and use it only for attendance matching.")
-                            Row(verticalAlignment = Alignment.CenterVertically) {
+                            Row(
+                                modifier = Modifier.toggleable(
+                                    value = consentGiven,
+                                    role = Role.Checkbox,
+                                    onValueChange = { consentGiven = it }
+                                ),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
                                 Checkbox(
                                     checked = consentGiven,
-                                    onCheckedChange = { consentGiven = it }
+                                    onCheckedChange = null
                                 )
                                 Text("I confirm the student has agreed to the use of their face data for attendance.")
                             }
