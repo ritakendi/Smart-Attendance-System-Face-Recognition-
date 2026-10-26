@@ -108,6 +108,7 @@ private fun HomeScreen(modifier: Modifier = Modifier, onOpen: (String) -> Unit) 
 @Composable
 private fun RegistrationScreen(modifier: Modifier = Modifier, onBack: () -> Unit) {
     var studentName by rememberSaveable { mutableStateOf("") }
+    var studentClass by rememberSaveable { mutableStateOf("") }
 
     Column(modifier = modifier.fillMaxSize().padding(24.dp)) {
         Text("Register Student", style = MaterialTheme.typography.headlineMedium)
@@ -117,6 +118,12 @@ private fun RegistrationScreen(modifier: Modifier = Modifier, onBack: () -> Unit
             label = { Text("Student name") },
             singleLine = true
         )
+        OutlinedTextField(
+        value = studentClass,
+        onValueChange = { studentClass = it },
+        label = { Text("Class") },
+        singleLine = true
+    )
         Button(onClick = onBack) { Text("Back") }
     }
 }
