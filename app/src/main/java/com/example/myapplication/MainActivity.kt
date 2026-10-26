@@ -22,6 +22,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.example.myapplication.ui.theme.MyApplicationTheme
+import androidx.compose.material3.Checkbox
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -38,6 +39,21 @@ class MainActivity : ComponentActivity() {
                         Column(modifier = Modifier.padding(padding).padding(24.dp)) {
                             Text("Consent and Privacy", style = MaterialTheme.typography.headlineMedium)
                             Text("Face samples will be used to recognize students and record attendance.")
+                            Text("Face data is sensitive biometric information. The app will store it securely on this device and use it only for attendance matching.")
+                            Text("I confirm the student has agreed to the use of their face data for attendance.")
+                            Checkbox(
+                                checked = consentGiven,
+                                onCheckedChange = { consentGiven = it }
+                            )
+                            Button(
+                                onClick = { screen = "Register Student" },
+                                enabled = consentGiven
+                            ) {
+                                Text("Continue")
+                            }
+                            Button(onClick = { screen = "Home" }) {
+                                Text("Back")
+                            }
                         }
                     } else {
                         PlaceholderScreen(screen, Modifier.padding(padding)) { screen = "Home" }
