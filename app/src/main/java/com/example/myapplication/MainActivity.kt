@@ -30,9 +30,15 @@ class MainActivity : ComponentActivity() {
         setContent {
             MyApplicationTheme {
                 var screen by rememberSaveable { mutableStateOf("Home") }
+                var consentGiven by rememberSaveable { mutableStateOf(false) }
                 Scaffold(modifier = Modifier.fillMaxSize()) { padding ->
                     if (screen == "Home") {
                         HomeScreen(Modifier.padding(padding)) { screen = it }
+                    } else if (screen == "Consent") {
+                        Column(modifier = Modifier.padding(padding).padding(24.dp)) {
+                            Text("Consent and Privacy", style = MaterialTheme.typography.headlineMedium)
+                            Text("Face samples will be used to recognize students and record attendance.")
+                        }
                     } else {
                         PlaceholderScreen(screen, Modifier.padding(padding)) { screen = "Home" }
                     }
@@ -50,7 +56,7 @@ private fun HomeScreen(modifier: Modifier = Modifier, onOpen: (String) -> Unit) 
     ) {
         Text("Smart Attendance", style = MaterialTheme.typography.headlineMedium)
         Spacer(Modifier.height(24.dp))
-        Button(onClick = { onOpen("Register Student") }) { Text("Register Student") }
+        Button(onClick = { onOpen("Consent") }) { Text("Register Student") }
         Button(onClick = { onOpen("Take Attendance") }) { Text("Take Attendance") }
         Button(onClick = { onOpen("View Reports") }) { Text("View Reports") }
     }
