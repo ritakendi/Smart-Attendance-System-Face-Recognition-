@@ -28,11 +28,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.ui.semantics.Role
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        System.loadLibrary("sqlcipher")
         setContent {
             MyApplicationTheme {
                 var screen by rememberSaveable { mutableStateOf("Home") }
@@ -109,6 +115,8 @@ private fun HomeScreen(modifier: Modifier = Modifier, onOpen: (String) -> Unit) 
 private fun RegistrationScreen(modifier: Modifier = Modifier, onBack: () -> Unit) {
     var studentName by rememberSaveable { mutableStateOf("") }
     var studentClass by rememberSaveable { mutableStateOf("") }
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
 
     Column(modifier = modifier.fillMaxSize().padding(24.dp)) {
         Text("Register Student", style = MaterialTheme.typography.headlineMedium)
@@ -119,12 +127,30 @@ private fun RegistrationScreen(modifier: Modifier = Modifier, onBack: () -> Unit
             singleLine = true
         )
         OutlinedTextField(
-        value = studentClass,
-        onValueChange = { studentClass = it },
-        label = { Text("Class") },
-        singleLine = true
-    )
-        Button(onClick = onBack) { Text("Back") }
+            value = studentClass,
+            onValueChange = { studentClass = it },
+            label = { Text("Class") },
+            singleLine = true
+        )
+        Button(
+            onClick = {
+                scope.launch {
+                    withContext(Dispatchers.IO) {
+                        AppDatabase.getInstance(context).studentDao().insert(
+                            Student(
+                                name = studentName.trim(),
+                                className = studentClass.trim()
+                            )
+                        )
+                    }
+                    onBack()
+                }
+            },
+            enabled = studentName.isNotBlank() && studentClass.isNotBlank()
+        ) {
+            Text("Save student")
+        }
+        Button(onClick = onBack) { Text("Cancel") }
     }
 }
 
