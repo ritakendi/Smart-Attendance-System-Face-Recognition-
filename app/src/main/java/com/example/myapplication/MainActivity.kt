@@ -33,6 +33,11 @@ import androidx.compose.ui.platform.LocalContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.ListItem
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -46,8 +51,11 @@ class MainActivity : ComponentActivity() {
                 Scaffold(modifier = Modifier.fillMaxSize()) { padding ->
                     when (screen) {
                         "Home" -> {
-                            HomeScreen(Modifier.padding(padding)) { screen = it }
-                        }
+                            HomeScreen(Modifier.padding(padding)) { destination ->
+                                if (destination == "Consent") consentGiven = false
+                                screen = destination
+                                }
+                            }
 
                         "Consent" -> {
                             Column(modifier = Modifier.padding(padding).padding(24.dp)) {
@@ -87,6 +95,10 @@ class MainActivity : ComponentActivity() {
                             RegistrationScreen(Modifier.padding(padding)) { screen = "Home" }
                         }
 
+                        "View Students" -> {
+                            StudentListScreen(Modifier.padding(padding)) { screen = "Home" }
+                        }
+
                         else -> {
                             PlaceholderScreen(screen, Modifier.padding(padding)) { screen = "Home" }
                         }
@@ -108,6 +120,7 @@ private fun HomeScreen(modifier: Modifier = Modifier, onOpen: (String) -> Unit) 
         Button(onClick = { onOpen("Consent") }) { Text("Register Student") }
         Button(onClick = { onOpen("Take Attendance") }) { Text("Take Attendance") }
         Button(onClick = { onOpen("View Reports") }) { Text("View Reports") }
+        Button(onClick = { onOpen("View Students") }) { Text("View Students") }
     }
 }
 
@@ -151,6 +164,37 @@ private fun RegistrationScreen(modifier: Modifier = Modifier, onBack: () -> Unit
             Text("Save student")
         }
         Button(onClick = onBack) { Text("Cancel") }
+    }
+}
+@Composable
+private fun StudentListScreen(modifier: Modifier = Modifier, onBack: () -> Unit) {
+    val context = LocalContext.current
+    var students by remember { mutableStateOf<List<Student>?>(null) }
+
+    LaunchedEffect(Unit) {
+        students = withContext(Dispatchers.IO) {
+            AppDatabase.getInstance(context).studentDao().getAll()
+        }
+    }
+
+    Column(modifier = modifier.fillMaxSize().padding(24.dp)) {
+        Text("Registered Students", style = MaterialTheme.typography.headlineMedium)
+
+        val registeredStudents = students
+        when {
+            registeredStudents == null -> Text("Loading students...")
+            registeredStudents.isEmpty() -> Text("No students registered yet.")
+            else -> LazyColumn(modifier = Modifier.weight(1f)) {
+                items(registeredStudents) { student ->
+                    ListItem(
+                        headlineContent = { Text(student.name) },
+                        supportingContent = { Text(student.className) }
+                    )
+                }
+            }
+        }
+
+        Button(onClick = onBack) { Text("Back") }
     }
 }
 
