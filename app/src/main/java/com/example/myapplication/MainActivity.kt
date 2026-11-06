@@ -39,6 +39,7 @@ import androidx.compose.material3.ListItem
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 
+
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -97,6 +98,13 @@ class MainActivity : ComponentActivity() {
 
                         "View Students" -> {
                             StudentListScreen(Modifier.padding(padding)) { screen = "Home" }
+                        }
+
+                        "Take Attendance" -> {
+                            CameraScreen(
+                                lifecycleOwner = this@MainActivity,
+                                modifier = Modifier.padding(padding)
+                            ) { screen = "Home" }
                         }
 
                         else -> {
