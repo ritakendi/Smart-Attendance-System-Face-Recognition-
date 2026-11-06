@@ -107,7 +107,7 @@ internal fun CameraScreen(
         } else {
             val faces = withContext(Dispatchers.IO) {
                 val students = AppDatabase.getInstance(context).studentDao()
-                    .getAll().associateBy { it.id }
+                    .getAll().filter { it.consentGivenAt != null }.associateBy { it.id }
                 AppDatabase.getInstance(context).faceSampleDao().getAll().mapNotNull { sample ->
                     students[sample.studentId]?.let {
                         RegisteredFace(it, sample.embedding.toFloatArray())

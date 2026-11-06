@@ -11,4 +11,7 @@ interface StudentDao {
 
     @Query("SELECT * FROM students ORDER BY name")
     suspend fun getAll(): List<Student>
+
+    @Query("UPDATE students SET consentGivenAt = :consentedAt WHERE id = :studentId")
+    suspend fun recordConsent(studentId: Int, consentedAt: Long)
 }

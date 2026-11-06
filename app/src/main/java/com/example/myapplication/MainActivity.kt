@@ -53,14 +53,20 @@ class MainActivity : ComponentActivity() {
         System.loadLibrary("sqlcipher")
         setContent {
             MyApplicationTheme {
+                val context = LocalContext.current
+                val scope = rememberCoroutineScope()
                 var screen by rememberSaveable { mutableStateOf("Home") }
                 var consentGiven by rememberSaveable { mutableStateOf(false) }
                 var enrollmentStudentId by rememberSaveable { mutableStateOf(0) }
+                var consentStudentId by rememberSaveable { mutableIntStateOf(0) }
                 Scaffold(modifier = Modifier.fillMaxSize()) { padding ->
                     when (screen) {
                         "Home" -> {
                             HomeScreen(Modifier.padding(padding)) { destination ->
-                                if (destination == "Consent") consentGiven = false
+                                if (destination == "Consent") {
+                                    consentGiven = false
+                                    consentStudentId = 0
+                                }
                                 screen = destination
                                 }
                             }
@@ -87,13 +93,29 @@ class MainActivity : ComponentActivity() {
                                 }
 
                                 Button(
-                                    onClick = { screen = "Register Student" },
+                                    onClick = {
+                                        if (consentStudentId == 0) {
+                                            screen = "Register Student"
+                                        } else {
+                                            scope.launch {
+                                                withContext(Dispatchers.IO) {
+                                                    AppDatabase.getInstance(context).studentDao()
+                                                        .recordConsent(consentStudentId, System.currentTimeMillis())
+                                                }
+                                                consentStudentId = 0
+                                                screen = "View Students"
+                                            }
+                                        }
+                                    },
                                     enabled = consentGiven
                                 ) {
                                     Text("Continue")
                                 }
 
-                                Button(onClick = { screen = "Home" }) {
+                                Button(onClick = {
+                                    consentStudentId = 0
+                                    screen = "Home"
+                                }) {
                                     Text("Back")
                                 }
                             }
@@ -106,9 +128,15 @@ class MainActivity : ComponentActivity() {
                         "View Students" -> {
                             StudentListScreen(
                                 modifier = Modifier.padding(padding),
-                                onCaptureFace = { id ->
-                                    enrollmentStudentId = id
-                                    screen = "Enroll Face"
+                                onCaptureFace = { student ->
+                                    enrollmentStudentId = student.id
+                                    if (student.consentGivenAt == null) {
+                                        consentGiven = false
+                                        consentStudentId = student.id
+                                        screen = "Consent"
+                                    } else {
+                                        screen = "Enroll Face"
+                                    }
                                 }
                             ) { screen = "Home" }
                         }
@@ -185,7 +213,8 @@ private fun RegistrationScreen(modifier: Modifier = Modifier, onBack: () -> Unit
                         AppDatabase.getInstance(context).studentDao().insert(
                             Student(
                                 name = studentName.trim(),
-                                className = studentClass.trim()
+                                className = studentClass.trim(),
+                                consentGivenAt = System.currentTimeMillis()
                             )
                         )
                     }
@@ -202,7 +231,7 @@ private fun RegistrationScreen(modifier: Modifier = Modifier, onBack: () -> Unit
 @Composable
 private fun StudentListScreen(
     modifier: Modifier = Modifier,
-    onCaptureFace: (Int) -> Unit,
+    onCaptureFace: (Student) -> Unit,
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
@@ -227,7 +256,9 @@ private fun StudentListScreen(
                         headlineContent = { Text(student.name) },
                         supportingContent = { Text(student.className) },
                         trailingContent = {
-                            Button(onClick = { onCaptureFace(student.id) }) { Text("Add face") }
+                            Button(onClick = { onCaptureFace(student) }) {
+                                Text(if (student.consentGivenAt == null) "Confirm consent" else "Add face")
+                            }
                         }
                     )
                 }
