@@ -50,15 +50,17 @@ internal fun CameraScreen(
     ) { hasPermission = it }
     val controller = remember(context) {
         LifecycleCameraController(context).apply {
-            cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
+            cameraSelector = CameraSelector.DEFAULT_FRONT_CAMERA
         }
     }
     var faceCount by remember { mutableStateOf(0) }
+    var landmarkCount by remember { mutableStateOf(0) }
     val analyzerExecutor = remember { Executors.newSingleThreadExecutor() }
     val detector = remember {
         FaceDetection.getClient(
             FaceDetectorOptions.Builder()
                 .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_FAST)
+                .setLandmarkMode(FaceDetectorOptions.LANDMARK_MODE_ALL)
                 .build()
         )
     }
@@ -73,8 +75,9 @@ internal fun CameraScreen(
                     detector.process(
                         InputImage.fromMediaImage(image, imageProxy.imageInfo.rotationDegrees)
                     )
-                        .addOnSuccessListener(ContextCompat.getMainExecutor(context)) {
-                            faceCount = it.size
+                        .addOnSuccessListener(ContextCompat.getMainExecutor(context)) { faces ->
+                            faceCount = faces.size
+                            landmarkCount = faces.sumOf { face -> face.allLandmarks.size }
                         }
                         .addOnCompleteListener { imageProxy.close() }
                 }
@@ -94,6 +97,7 @@ internal fun CameraScreen(
     Column(modifier = modifier.fillMaxSize().padding(16.dp)) {
         if (hasPermission) {
             Text("Faces detected: $faceCount")
+            Text("Facial landmarks found: $landmarkCount")
             AndroidView(
                 factory = {
                     PreviewView(it).apply {
