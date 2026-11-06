@@ -4,6 +4,8 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -246,6 +248,22 @@ private fun AttendanceReportScreen(modifier: Modifier = Modifier, onBack: () -> 
     var filter by rememberSaveable { mutableStateOf("") }
     var rows by remember { mutableStateOf<List<AttendanceStatus>?>(null) }
     var refresh by remember { mutableIntStateOf(0) }
+    val reportRows = rows?.filter {
+        it.name.contains(filter, true) || it.className.contains(filter, true)
+    }
+    val exportCsv = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
+        if (uri != null) scope.launch(Dispatchers.IO) {
+            context.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { writer ->
+                writer.appendLine("Student,Class,Date,Status,Time")
+                reportRows.orEmpty().forEach { row ->
+                    val time = row.markedAt?.let {
+                        SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(it))
+                    }.orEmpty()
+                    writer.appendLine("${row.name.csv()},${row.className.csv()},$date,${if (time.isEmpty()) "Not recorded" else "Present"},$time")
+                }
+            }
+        }
+    }
 
     LaunchedEffect(date, refresh) {
         rows = withContext(Dispatchers.IO) {
@@ -258,8 +276,8 @@ private fun AttendanceReportScreen(modifier: Modifier = Modifier, onBack: () -> 
         OutlinedTextField(date, { date = it }, label = { Text("Date (YYYY-MM-DD)") }, singleLine = true)
         OutlinedTextField(filter, { filter = it }, label = { Text("Filter by student or class") }, singleLine = true)
 
-        val reportRows = rows?.filter {
-            it.name.contains(filter, true) || it.className.contains(filter, true)
+        Button(onClick = { exportCsv.launch("attendance-$date.csv") }, enabled = reportRows != null) {
+            Text("Export CSV")
         }
         when {
             reportRows == null -> Text("Loading report...")
@@ -303,6 +321,8 @@ private fun AttendanceReportScreen(modifier: Modifier = Modifier, onBack: () -> 
         Button(onClick = onBack) { Text("Back") }
     }
 }
+
+private fun String.csv() = "\"${replace("\"", "\"\"")}\""
 
 @Composable
 private fun PlaceholderScreen(
