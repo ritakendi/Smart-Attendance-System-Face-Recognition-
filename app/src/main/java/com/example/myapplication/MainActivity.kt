@@ -49,6 +49,7 @@ class MainActivity : ComponentActivity() {
             MyApplicationTheme {
                 var screen by rememberSaveable { mutableStateOf("Home") }
                 var consentGiven by rememberSaveable { mutableStateOf(false) }
+                var enrollmentStudentId by rememberSaveable { mutableStateOf(0) }
                 Scaffold(modifier = Modifier.fillMaxSize()) { padding ->
                     when (screen) {
                         "Home" -> {
@@ -97,7 +98,13 @@ class MainActivity : ComponentActivity() {
                         }
 
                         "View Students" -> {
-                            StudentListScreen(Modifier.padding(padding)) { screen = "Home" }
+                            StudentListScreen(
+                                modifier = Modifier.padding(padding),
+                                onCaptureFace = { id ->
+                                    enrollmentStudentId = id
+                                    screen = "Enroll Face"
+                                }
+                            ) { screen = "Home" }
                         }
 
                         "Take Attendance" -> {
@@ -105,6 +112,14 @@ class MainActivity : ComponentActivity() {
                                 lifecycleOwner = this@MainActivity,
                                 modifier = Modifier.padding(padding)
                             ) { screen = "Home" }
+                        }
+
+                        "Enroll Face" -> {
+                            CameraScreen(
+                                lifecycleOwner = this@MainActivity,
+                                modifier = Modifier.padding(padding),
+                                enrollmentStudentId = enrollmentStudentId
+                            ) { screen = "View Students" }
                         }
 
                         else -> {
@@ -175,7 +190,11 @@ private fun RegistrationScreen(modifier: Modifier = Modifier, onBack: () -> Unit
     }
 }
 @Composable
-private fun StudentListScreen(modifier: Modifier = Modifier, onBack: () -> Unit) {
+private fun StudentListScreen(
+    modifier: Modifier = Modifier,
+    onCaptureFace: (Int) -> Unit,
+    onBack: () -> Unit
+) {
     val context = LocalContext.current
     var students by remember { mutableStateOf<List<Student>?>(null) }
 
@@ -196,7 +215,10 @@ private fun StudentListScreen(modifier: Modifier = Modifier, onBack: () -> Unit)
                 items(registeredStudents) { student ->
                     ListItem(
                         headlineContent = { Text(student.name) },
-                        supportingContent = { Text(student.className) }
+                        supportingContent = { Text(student.className) },
+                        trailingContent = {
+                            Button(onClick = { onCaptureFace(student.id) }) { Text("Add face") }
+                        }
                     )
                 }
             }

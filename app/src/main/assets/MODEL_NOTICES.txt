@@ -1,0 +1,2 @@
+MobileFaceNet TFLite model from Qualcomm AI Hub, release v0.66.0.
+License: Apache-2.0. Source: https://aihub.qualcomm.com/mobile/models/mobile_facenet
