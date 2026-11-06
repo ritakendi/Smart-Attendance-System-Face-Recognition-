@@ -41,9 +41,17 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.math.max
+
+private const val MATCH_THRESHOLD = 0.5f
+private data class RegisteredFace(val student: Student, val embedding: FloatArray)
 
 @Composable
 internal fun CameraScreen(
@@ -73,6 +81,10 @@ internal fun CameraScreen(
     var latestEmbedding by remember { mutableStateOf<FloatArray?>(null) }
     var sampleCount by remember { mutableStateOf(0) }
     var saving by remember { mutableStateOf(false) }
+    var knownFacesLoaded by remember { mutableStateOf(false) }
+    var attendanceMessage by remember { mutableStateOf("Loading face samples…") }
+    val registeredFaces = remember { AtomicReference<List<RegisteredFace>>(emptyList()) }
+    val attendanceStatus = remember { ConcurrentHashMap<Int, String>() }
     val analyzerExecutor = remember { Executors.newSingleThreadExecutor() }
     val processingExecutor = remember { Executors.newSingleThreadExecutor() }
     val model = remember(context) { lazy { FaceEmbeddingModel(context) } }
@@ -92,6 +104,19 @@ internal fun CameraScreen(
                 AppDatabase.getInstance(context).faceSampleDao()
                     .getForStudent(enrollmentStudentId).size
             }
+        } else {
+            val faces = withContext(Dispatchers.IO) {
+                val students = AppDatabase.getInstance(context).studentDao()
+                    .getAll().associateBy { it.id }
+                AppDatabase.getInstance(context).faceSampleDao().getAll().mapNotNull { sample ->
+                    students[sample.studentId]?.let {
+                        RegisteredFace(it, sample.embedding.toFloatArray())
+                    }
+                }
+            }
+            registeredFaces.set(faces)
+            knownFacesLoaded = true
+            attendanceMessage = if (faces.isEmpty()) "No face samples registered." else "Ready to scan."
         }
     }
 
@@ -108,19 +133,73 @@ internal fun CameraScreen(
                                 ContextCompat.getMainExecutor(context).execute {
                                     faceCount = faces.size
                                     landmarkCount = faces.sumOf { it.allLandmarks.size }
-                                    if (faces.size != 1) latestEmbedding = null
+                                    if (faces.size != 1) {
+                                        latestEmbedding = null
+                                        if (enrollmentStudentId == null) {
+                                            attendanceMessage = "Show one face to scan."
+                                        }
+                                    }
                                 }
                                 val face = faces.singleOrNull()
                                 val now = SystemClock.elapsedRealtime()
-                                if (enrollmentStudentId != null && face != null &&
+                                val canMatch = registeredFaces.get().isNotEmpty()
+                                if ((enrollmentStudentId != null || canMatch) && face != null &&
                                     now - lastEmbeddingTime.get() >= 800L
                                 ) {
                                     lastEmbeddingTime.set(now)
                                     val crop = imageProxy.faceCrop(face)
                                     if (crop != null) {
                                         val embedding = model.value.embed(crop)
-                                        ContextCompat.getMainExecutor(context).execute {
-                                            latestEmbedding = embedding
+                                        if (enrollmentStudentId != null) {
+                                            ContextCompat.getMainExecutor(context).execute {
+                                                latestEmbedding = embedding
+                                            }
+                                        } else {
+                                            val match = registeredFaces.get().bestMatch(embedding)
+                                            if (match == null) {
+                                                ContextCompat.getMainExecutor(context).execute {
+                                                    attendanceMessage = "No match found; not marked."
+                                                }
+                                            } else {
+                                                val message = attendanceStatus[match.student.id]
+                                                if (message != null) {
+                                                    ContextCompat.getMainExecutor(context).execute {
+                                                        attendanceMessage = message
+                                                    }
+                                                } else if (attendanceStatus.putIfAbsent(
+                                                        match.student.id, "Marking ${match.student.name}…"
+                                                    ) == null
+                                                ) {
+                                                    ContextCompat.getMainExecutor(context).execute {
+                                                        attendanceMessage = "Marking ${match.student.name}…"
+                                                    }
+                                                    scope.launch(Dispatchers.IO) {
+                                                        val markedAt = System.currentTimeMillis()
+                                                        val rowId = try {
+                                                            AppDatabase.getInstance(context).attendanceDao().mark(
+                                                                AttendanceRecord(
+                                                                    studentId = match.student.id,
+                                                                    date = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+                                                                        .format(Date(markedAt)),
+                                                                    markedAt = markedAt
+                                                                )
+                                                            )
+                                                        } catch (_: Exception) {
+                                                            -2L
+                                                        }
+                                                        val result = when (rowId) {
+                                                            -1L -> "Already marked: ${match.student.name}"
+                                                            -2L -> "Could not save attendance."
+                                                            else -> "Attendance marked: ${match.student.name}"
+                                                        }
+                                                        if (rowId == -2L) attendanceStatus.remove(match.student.id)
+                                                        else attendanceStatus[match.student.id] = result
+                                                        ContextCompat.getMainExecutor(context).execute {
+                                                            attendanceMessage = result
+                                                        }
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -184,6 +263,8 @@ internal fun CameraScreen(
                         }
                     }
                 ) { Text(if (saving) "Saving…" else "Save face sample") }
+            } else {
+                Text(if (knownFacesLoaded) attendanceMessage else "Loading registered face samples…")
             }
             AndroidView(
                 factory = {
@@ -222,3 +303,21 @@ private fun ImageProxy.faceCrop(face: Face): Bitmap? {
 
 private fun FloatArray.toBytes(): ByteArray = ByteBuffer.allocate(size * 4)
     .order(ByteOrder.LITTLE_ENDIAN).apply { forEach(::putFloat) }.array()
+
+private fun ByteArray.toFloatArray(): FloatArray = ByteBuffer.wrap(this)
+    .order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer().let { FloatArray(size / 4).also(it::get) }
+
+private fun List<RegisteredFace>.bestMatch(embedding: FloatArray): RegisteredFace? {
+    var best: RegisteredFace? = null
+    var bestScore = MATCH_THRESHOLD
+    forEach { candidate ->
+        val score = embedding.indices.sumOf {
+            (embedding[it] * candidate.embedding[it]).toDouble()
+        }.toFloat()
+        if (score > bestScore) {
+            best = candidate
+            bestScore = score
+        }
+    }
+    return best
+}
