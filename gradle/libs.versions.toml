@@ -12,7 +12,7 @@ room = "2.8.5"
 ksp = "2.2.10-2.0.2"
 sqlcipher = "4.20.0"
 sqlite = "2.7.0"
-cameraX = "1.6.2"
+cameraX = "1.7.0-rc02"
 mlkitFaceDetection = "16.1.7"
 
 [libraries]

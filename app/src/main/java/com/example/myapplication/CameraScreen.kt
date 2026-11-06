@@ -7,7 +7,9 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
 import androidx.camera.view.LifecycleCameraController
 import androidx.camera.view.PreviewView
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
@@ -23,8 +25,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import androidx.core.view.doOnLayout
 import androidx.lifecycle.LifecycleOwner
-import androidx.compose.runtime.LaunchedEffect
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.face.FaceDetection
 import com.google.mlkit.vision.face.FaceDetectorOptions
@@ -62,40 +64,45 @@ internal fun CameraScreen(
     }
 
     LaunchedEffect(lifecycleOwner, hasPermission) {
-    if (hasPermission) {
-        controller.setImageAnalysisAnalyzer(analyzerExecutor) { imageProxy ->
-            val image = imageProxy.image
-            if (image == null) {
-                imageProxy.close()
-            } else {
-                detector.process(
-                    InputImage.fromMediaImage(image, imageProxy.imageInfo.rotationDegrees)
-                )
-                    .addOnSuccessListener(ContextCompat.getMainExecutor(context)) {
-                        faceCount = it.size
-                    }
-                    .addOnCompleteListener { imageProxy.close() }
+        if (hasPermission) {
+            controller.setImageAnalysisAnalyzer(analyzerExecutor) { imageProxy ->
+                val image = imageProxy.image
+                if (image == null) {
+                    imageProxy.close()
+                } else {
+                    detector.process(
+                        InputImage.fromMediaImage(image, imageProxy.imageInfo.rotationDegrees)
+                    )
+                        .addOnSuccessListener(ContextCompat.getMainExecutor(context)) {
+                            faceCount = it.size
+                        }
+                        .addOnCompleteListener { imageProxy.close() }
+                }
             }
         }
-        controller.bindToLifecycle(lifecycleOwner)
     }
-}
 
-DisposableEffect(controller) {
-    onDispose {
-        controller.clearImageAnalysisAnalyzer()
-        controller.unbind()
-        detector.close()
-        analyzerExecutor.shutdown()
+    DisposableEffect(controller) {
+        onDispose {
+            controller.clearImageAnalysisAnalyzer()
+            controller.unbind()
+            detector.close()
+            analyzerExecutor.shutdown()
+        }
     }
-}
 
     Column(modifier = modifier.fillMaxSize().padding(16.dp)) {
         if (hasPermission) {
             Text("Faces detected: $faceCount")
             AndroidView(
-                factory = { PreviewView(it).apply { this.controller = controller } },
-                modifier = Modifier.weight(1f)
+                factory = {
+                    PreviewView(it).apply {
+                        implementationMode = PreviewView.ImplementationMode.COMPATIBLE
+                        this.controller = controller
+                        doOnLayout { controller.bindToLifecycle(lifecycleOwner) }
+                    }
+                },
+                modifier = Modifier.fillMaxWidth().weight(1f)
             )
         } else {
             Text("Allow camera access to scan faces.")
