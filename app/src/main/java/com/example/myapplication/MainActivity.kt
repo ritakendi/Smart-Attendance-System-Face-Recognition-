@@ -17,6 +17,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -38,6 +39,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.ListItem
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 
 class MainActivity : ComponentActivity() {
@@ -120,6 +124,10 @@ class MainActivity : ComponentActivity() {
                                 modifier = Modifier.padding(padding),
                                 enrollmentStudentId = enrollmentStudentId
                             ) { screen = "View Students" }
+                        }
+
+                        "View Reports" -> {
+                            AttendanceReportScreen(Modifier.padding(padding)) { screen = "Home" }
                         }
 
                         else -> {
@@ -224,6 +232,74 @@ private fun StudentListScreen(
             }
         }
 
+        Button(onClick = onBack) { Text("Back") }
+    }
+}
+
+@Composable
+private fun AttendanceReportScreen(modifier: Modifier = Modifier, onBack: () -> Unit) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var date by rememberSaveable {
+        mutableStateOf(SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date()))
+    }
+    var filter by rememberSaveable { mutableStateOf("") }
+    var rows by remember { mutableStateOf<List<AttendanceStatus>?>(null) }
+    var refresh by remember { mutableIntStateOf(0) }
+
+    LaunchedEffect(date, refresh) {
+        rows = withContext(Dispatchers.IO) {
+            AppDatabase.getInstance(context).attendanceDao().getForDate(date)
+        }
+    }
+
+    Column(modifier = modifier.fillMaxSize().padding(24.dp)) {
+        Text("Attendance Report", style = MaterialTheme.typography.headlineMedium)
+        OutlinedTextField(date, { date = it }, label = { Text("Date (YYYY-MM-DD)") }, singleLine = true)
+        OutlinedTextField(filter, { filter = it }, label = { Text("Filter by student or class") }, singleLine = true)
+
+        val reportRows = rows?.filter {
+            it.name.contains(filter, true) || it.className.contains(filter, true)
+        }
+        when {
+            reportRows == null -> Text("Loading report...")
+            reportRows.isEmpty() -> Text("No students match this report.")
+            else -> LazyColumn(modifier = Modifier.weight(1f)) {
+                items(reportRows) { row ->
+                    val markedAt = row.markedAt
+                    ListItem(
+                        headlineContent = { Text(row.name) },
+                        supportingContent = {
+                            val status = markedAt?.let {
+                                "Present · ${SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(it))}"
+                            } ?: "Not recorded"
+                            Text("${row.className} · $status")
+                        },
+                        trailingContent = {
+                            Button(onClick = {
+                                scope.launch {
+                                    withContext(Dispatchers.IO) {
+                                        val dao = AppDatabase.getInstance(context).attendanceDao()
+                                        if (markedAt == null) {
+                                            dao.mark(
+                                                AttendanceRecord(
+                                                    studentId = row.studentId,
+                                                    date = date,
+                                                    markedAt = System.currentTimeMillis()
+                                                )
+                                            )
+                                        } else {
+                                            dao.remove(row.studentId, date)
+                                        }
+                                    }
+                                    refresh++
+                                }
+                            }) { Text(if (markedAt == null) "Mark" else "Undo") }
+                        }
+                    )
+                }
+            }
+        }
         Button(onClick = onBack) { Text("Back") }
     }
 }
