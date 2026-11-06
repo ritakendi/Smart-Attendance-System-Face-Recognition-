@@ -133,69 +133,71 @@ internal fun CameraScreen(
                                 ContextCompat.getMainExecutor(context).execute {
                                     faceCount = faces.size
                                     landmarkCount = faces.sumOf { it.allLandmarks.size }
-                                    if (faces.size != 1) {
+                                    if (enrollmentStudentId != null && faces.size != 1) {
                                         latestEmbedding = null
-                                        if (enrollmentStudentId == null) {
-                                            attendanceMessage = "Show one face to scan."
-                                        }
+                                    } else if (enrollmentStudentId == null && faces.isEmpty()) {
+                                        attendanceMessage = "Show a face to scan."
                                     }
                                 }
-                                val face = faces.singleOrNull()
+                                val facesToEmbed = if (enrollmentStudentId == null) faces
+                                    else faces.singleOrNull()?.let(::listOf).orEmpty()
                                 val now = SystemClock.elapsedRealtime()
                                 val canMatch = registeredFaces.get().isNotEmpty()
-                                if ((enrollmentStudentId != null || canMatch) && face != null &&
+                                if ((enrollmentStudentId != null || canMatch) && facesToEmbed.isNotEmpty() &&
                                     now - lastEmbeddingTime.get() >= 800L
                                 ) {
                                     lastEmbeddingTime.set(now)
-                                    val crop = imageProxy.faceCrop(face)
-                                    if (crop != null) {
-                                        val embedding = model.value.embed(crop)
-                                        if (enrollmentStudentId != null) {
-                                            ContextCompat.getMainExecutor(context).execute {
-                                                latestEmbedding = embedding
-                                            }
-                                        } else {
-                                            val match = registeredFaces.get().bestMatch(embedding)
-                                            if (match == null) {
+                                    for (face in facesToEmbed) {
+                                        val crop = imageProxy.faceCrop(face)
+                                        if (crop != null) {
+                                            val embedding = model.value.embed(crop)
+                                            if (enrollmentStudentId != null) {
                                                 ContextCompat.getMainExecutor(context).execute {
-                                                    attendanceMessage = "No match found; not marked."
+                                                    latestEmbedding = embedding
                                                 }
                                             } else {
-                                                val message = attendanceStatus[match.student.id]
-                                                if (message != null) {
+                                                val match = registeredFaces.get().bestMatch(embedding)
+                                                if (match == null) {
                                                     ContextCompat.getMainExecutor(context).execute {
-                                                        attendanceMessage = message
+                                                        attendanceMessage = "No match found; not marked."
                                                     }
-                                                } else if (attendanceStatus.putIfAbsent(
-                                                        match.student.id, "Marking ${match.student.name}…"
-                                                    ) == null
-                                                ) {
-                                                    ContextCompat.getMainExecutor(context).execute {
-                                                        attendanceMessage = "Marking ${match.student.name}…"
-                                                    }
-                                                    scope.launch(Dispatchers.IO) {
-                                                        val markedAt = System.currentTimeMillis()
-                                                        val rowId = try {
-                                                            AppDatabase.getInstance(context).attendanceDao().mark(
-                                                                AttendanceRecord(
-                                                                    studentId = match.student.id,
-                                                                    date = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-                                                                        .format(Date(markedAt)),
-                                                                    markedAt = markedAt
-                                                                )
-                                                            )
-                                                        } catch (_: Exception) {
-                                                            -2L
-                                                        }
-                                                        val result = when (rowId) {
-                                                            -1L -> "Already marked: ${match.student.name}"
-                                                            -2L -> "Could not save attendance."
-                                                            else -> "Attendance marked: ${match.student.name}"
-                                                        }
-                                                        if (rowId == -2L) attendanceStatus.remove(match.student.id)
-                                                        else attendanceStatus[match.student.id] = result
+                                                } else {
+                                                    val message = attendanceStatus[match.student.id]
+                                                    if (message != null) {
                                                         ContextCompat.getMainExecutor(context).execute {
-                                                            attendanceMessage = result
+                                                            attendanceMessage = message
+                                                        }
+                                                    } else if (attendanceStatus.putIfAbsent(
+                                                            match.student.id, "Marking ${match.student.name}…"
+                                                        ) == null
+                                                    ) {
+                                                        ContextCompat.getMainExecutor(context).execute {
+                                                            attendanceMessage = "Marking ${match.student.name}…"
+                                                        }
+                                                        scope.launch(Dispatchers.IO) {
+                                                            val markedAt = System.currentTimeMillis()
+                                                            val rowId = try {
+                                                                AppDatabase.getInstance(context).attendanceDao().mark(
+                                                                    AttendanceRecord(
+                                                                        studentId = match.student.id,
+                                                                        date = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+                                                                            .format(Date(markedAt)),
+                                                                        markedAt = markedAt
+                                                                    )
+                                                                )
+                                                            } catch (_: Exception) {
+                                                                -2L
+                                                            }
+                                                            val result = when (rowId) {
+                                                                -1L -> "Already marked: ${match.student.name}"
+                                                                -2L -> "Could not save attendance."
+                                                                else -> "Attendance marked: ${match.student.name}"
+                                                            }
+                                                            if (rowId == -2L) attendanceStatus.remove(match.student.id)
+                                                            else attendanceStatus[match.student.id] = result
+                                                            ContextCompat.getMainExecutor(context).execute {
+                                                                attendanceMessage = result
+                                                            }
                                                         }
                                                     }
                                                 }
