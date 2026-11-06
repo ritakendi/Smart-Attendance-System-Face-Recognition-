@@ -245,76 +245,121 @@ private fun AttendanceReportScreen(modifier: Modifier = Modifier, onBack: () -> 
     var date by rememberSaveable {
         mutableStateOf(SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date()))
     }
+    var month by rememberSaveable {
+        mutableStateOf(SimpleDateFormat("yyyy-MM", Locale.getDefault()).format(Date()))
+    }
+    var monthly by rememberSaveable { mutableStateOf(false) }
     var filter by rememberSaveable { mutableStateOf("") }
     var rows by remember { mutableStateOf<List<AttendanceStatus>?>(null) }
+    var monthlyRows by remember { mutableStateOf<List<MonthlyAttendanceStatus>?>(null) }
     var refresh by remember { mutableIntStateOf(0) }
     val reportRows = rows?.filter {
+        it.name.contains(filter, true) || it.className.contains(filter, true)
+    }
+    val monthlyReportRows = monthlyRows?.filter {
         it.name.contains(filter, true) || it.className.contains(filter, true)
     }
     val exportCsv = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
         if (uri != null) scope.launch(Dispatchers.IO) {
             context.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { writer ->
-                writer.appendLine("Student,Class,Date,Status,Time")
-                reportRows.orEmpty().forEach { row ->
-                    val time = row.markedAt?.let {
-                        SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(it))
-                    }.orEmpty()
-                    writer.appendLine("${row.name.csv()},${row.className.csv()},$date,${if (time.isEmpty()) "Not recorded" else "Present"},$time")
+                if (monthly) {
+                    writer.appendLine("Student,Class,Month,Days present")
+                    monthlyReportRows.orEmpty().forEach { row ->
+                        writer.appendLine("${row.name.csv()},${row.className.csv()},$month,${row.daysPresent}")
+                    }
+                } else {
+                    writer.appendLine("Student,Class,Date,Status,Time")
+                    reportRows.orEmpty().forEach { row ->
+                        val time = row.markedAt?.let {
+                            SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(it))
+                        }.orEmpty()
+                        writer.appendLine("${row.name.csv()},${row.className.csv()},$date,${if (time.isEmpty()) "Not recorded" else "Present"},$time")
+                    }
                 }
             }
         }
     }
 
-    LaunchedEffect(date, refresh) {
-        rows = withContext(Dispatchers.IO) {
-            AppDatabase.getInstance(context).attendanceDao().getForDate(date)
+    LaunchedEffect(date, month, monthly, refresh) {
+        val dao = AppDatabase.getInstance(context).attendanceDao()
+        if (monthly) {
+            monthlyRows = null
+            monthlyRows = withContext(Dispatchers.IO) { dao.getForMonth(month) }
+        } else {
+            rows = null
+            rows = withContext(Dispatchers.IO) { dao.getForDate(date) }
         }
     }
 
     Column(modifier = modifier.fillMaxSize().padding(24.dp)) {
         Text("Attendance Report", style = MaterialTheme.typography.headlineMedium)
-        OutlinedTextField(date, { date = it }, label = { Text("Date (YYYY-MM-DD)") }, singleLine = true)
+        Button(onClick = { monthly = !monthly }) {
+            Text(if (monthly) "Show daily report" else "Show monthly report")
+        }
+        if (monthly) {
+            OutlinedTextField(month, { month = it }, label = { Text("Month (YYYY-MM)") }, singleLine = true)
+        } else {
+            OutlinedTextField(date, { date = it }, label = { Text("Date (YYYY-MM-DD)") }, singleLine = true)
+        }
         OutlinedTextField(filter, { filter = it }, label = { Text("Filter by student or class") }, singleLine = true)
 
-        Button(onClick = { exportCsv.launch("attendance-$date.csv") }, enabled = reportRows != null) {
+        Button(
+            onClick = { exportCsv.launch("attendance-${if (monthly) month else date}.csv") },
+            enabled = if (monthly) monthlyReportRows != null else reportRows != null
+        ) {
             Text("Export CSV")
         }
-        when {
-            reportRows == null -> Text("Loading report...")
-            reportRows.isEmpty() -> Text("No students match this report.")
-            else -> LazyColumn(modifier = Modifier.weight(1f)) {
-                items(reportRows) { row ->
-                    val markedAt = row.markedAt
-                    ListItem(
-                        headlineContent = { Text(row.name) },
-                        supportingContent = {
-                            val status = markedAt?.let {
-                                "Present · ${SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(it))}"
-                            } ?: "Not recorded"
-                            Text("${row.className} · $status")
-                        },
-                        trailingContent = {
-                            Button(onClick = {
-                                scope.launch {
-                                    withContext(Dispatchers.IO) {
-                                        val dao = AppDatabase.getInstance(context).attendanceDao()
-                                        if (markedAt == null) {
-                                            dao.mark(
-                                                AttendanceRecord(
-                                                    studentId = row.studentId,
-                                                    date = date,
-                                                    markedAt = System.currentTimeMillis()
+        if (monthly) {
+            when {
+                monthlyReportRows == null -> Text("Loading report...")
+                monthlyReportRows.isEmpty() -> Text("No students match this report.")
+                else -> LazyColumn(modifier = Modifier.weight(1f)) {
+                    items(monthlyReportRows) { row ->
+                        ListItem(
+                            headlineContent = { Text(row.name) },
+                            supportingContent = { Text("${row.className} · ${row.daysPresent} days present") }
+                        )
+                    }
+                }
+            }
+        } else {
+            when {
+                reportRows == null -> Text("Loading report...")
+                reportRows.isEmpty() -> Text("No students match this report.")
+                else -> LazyColumn(modifier = Modifier.weight(1f)) {
+                    items(reportRows) { row ->
+                        val markedAt = row.markedAt
+                        ListItem(
+                            headlineContent = { Text(row.name) },
+                            supportingContent = {
+                                val status = markedAt?.let {
+                                    "Present · ${SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(it))}"
+                                } ?: "Not recorded"
+                                Text("${row.className} · $status")
+                            },
+                            trailingContent = {
+                                Button(onClick = {
+                                    scope.launch {
+                                        withContext(Dispatchers.IO) {
+                                            val dao = AppDatabase.getInstance(context).attendanceDao()
+                                            if (markedAt == null) {
+                                                dao.mark(
+                                                    AttendanceRecord(
+                                                        studentId = row.studentId,
+                                                        date = date,
+                                                        markedAt = System.currentTimeMillis()
+                                                    )
                                                 )
-                                            )
-                                        } else {
-                                            dao.remove(row.studentId, date)
+                                            } else {
+                                                dao.remove(row.studentId, date)
+                                            }
                                         }
+                                        refresh++
                                     }
-                                    refresh++
-                                }
-                            }) { Text(if (markedAt == null) "Mark" else "Undo") }
-                        }
-                    )
+                                }) { Text(if (markedAt == null) "Mark" else "Undo") }
+                            }
+                        )
+                    }
                 }
             }
         }
