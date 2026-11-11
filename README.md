@@ -6,6 +6,7 @@ An Android attendance app that uses face matching to mark registered students pr
 
 - Register students with a name and class after confirming consent.
 - Capture and save multiple face embeddings for each student.
+- Require a tracked blink before saving a face sample or marking attendance.
 - Scan one or more faces and automatically mark recognized students once per day.
 - View daily reports by date and filter by student or class; manually mark or undo attendance.
 - View monthly days-present summaries and export daily or monthly reports as CSV or PDF.
@@ -31,8 +32,8 @@ On Windows, use `gradlew.bat` instead of `./gradlew`.
 ## Typical workflow
 
 1. Choose **Register Student**, read the privacy notice, confirm consent, and enter the student’s name and class.
-2. Open **View Students**, choose **Add face**, point the front camera at the student, and tap **Save face sample**. Repeat to add more samples.
-3. Choose **Take Attendance** and allow camera access. Recognized students are marked automatically; no attendance save button is needed.
+2. Open **View Students**, choose **Add face**, point the front camera at the student, blink, and tap **Save face sample**. Repeat to add more samples.
+3. Choose **Take Attendance** and allow camera access. Each student must blink; recognized students are then marked automatically.
 4. Open **View Reports** to review daily attendance, correct a daily entry, switch to a monthly summary, or export the current report as CSV or PDF.
 
 ## Face data and privacy
@@ -48,6 +49,6 @@ The face-embedding model is MobileFaceNet from Qualcomm AI Hub, licensed under A
 
 - The cosine-similarity cutoff (`0.50`) is a starting value and needs testing with the intended students and devices.
 - Multi-face scanning is implemented, but classroom accuracy and performance still need on-device verification.
-- The app has no liveness check, so a photo or video may be used to spoof a face match.
+- Blink detection is a basic live-presence check.
 - Monthly reports show days present; the app does not track scheduled school days or calculate absences.
 - Consent revocation controls are not implemented.

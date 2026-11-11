@@ -51,6 +51,7 @@ import java.util.concurrent.atomic.AtomicReference
 import kotlin.math.max
 
 private const val MATCH_THRESHOLD = 0.5f
+private const val LIVE_WINDOW_MS = 10_000L
 private data class RegisteredFace(val student: Student, val embedding: FloatArray)
 
 @Composable
@@ -85,6 +86,8 @@ internal fun CameraScreen(
     var attendanceMessage by remember { mutableStateOf("Loading face samples…") }
     val registeredFaces = remember { AtomicReference<List<RegisteredFace>>(emptyList()) }
     val attendanceStatus = remember { ConcurrentHashMap<Int, String>() }
+    val closedEyes = remember { ConcurrentHashMap<Int, Boolean>() }
+    val lastBlinkAt = remember { ConcurrentHashMap<Int, Long>() }
     val analyzerExecutor = remember { Executors.newSingleThreadExecutor() }
     val processingExecutor = remember { Executors.newSingleThreadExecutor() }
     val model = remember(context) { lazy { FaceEmbeddingModel(context) } }
@@ -94,6 +97,8 @@ internal fun CameraScreen(
             FaceDetectorOptions.Builder()
                 .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_FAST)
                 .setLandmarkMode(FaceDetectorOptions.LANDMARK_MODE_ALL)
+                .setClassificationMode(FaceDetectorOptions.CLASSIFICATION_MODE_ALL)
+                .enableTracking()
                 .build()
         )
     }
@@ -130,18 +135,25 @@ internal fun CameraScreen(
                     detector.process(InputImage.fromMediaImage(image, imageProxy.imageInfo.rotationDegrees))
                         .addOnSuccessListener(processingExecutor) { faces ->
                             try {
+                                val now = SystemClock.elapsedRealtime()
+                                val liveFaces = faces.filter {
+                                    it.passedBlink(now, closedEyes, lastBlinkAt)
+                                }
                                 ContextCompat.getMainExecutor(context).execute {
                                     faceCount = faces.size
                                     landmarkCount = faces.sumOf { it.allLandmarks.size }
-                                    if (enrollmentStudentId != null && faces.size != 1) {
+                                    if (enrollmentStudentId != null &&
+                                        (faces.size != 1 || liveFaces.size != 1)
+                                    ) {
                                         latestEmbedding = null
                                     } else if (enrollmentStudentId == null && faces.isEmpty()) {
                                         attendanceMessage = "Show a face to scan."
+                                    } else if (enrollmentStudentId == null && liveFaces.size < faces.size) {
+                                        attendanceMessage = "Ask each student to blink before scanning."
                                     }
                                 }
-                                val facesToEmbed = if (enrollmentStudentId == null) faces
-                                    else faces.singleOrNull()?.let(::listOf).orEmpty()
-                                val now = SystemClock.elapsedRealtime()
+                                val facesToEmbed = if (enrollmentStudentId == null) liveFaces
+                                    else liveFaces.singleOrNull()?.let(::listOf).orEmpty()
                                 val canMatch = registeredFaces.get().isNotEmpty()
                                 if ((enrollmentStudentId != null || canMatch) && facesToEmbed.isNotEmpty() &&
                                     now - lastEmbeddingTime.get() >= 800L
@@ -241,7 +253,7 @@ internal fun CameraScreen(
                 Text(
                     when {
                         faceCount != 1 -> "Show one face to the camera."
-                        latestEmbedding == null -> "Preparing face sample…"
+                        latestEmbedding == null -> "Blink to verify you’re present."
                         else -> "Face ready to save."
                     }
                 )
@@ -301,6 +313,19 @@ private fun ImageProxy.faceCrop(face: Face): Bitmap? {
     val top = (box.centerY() - size / 2).coerceIn(0, upright.height - 1)
     val cropSize = minOf(size, upright.width - left, upright.height - top)
     return if (cropSize > 0) Bitmap.createBitmap(upright, left, top, cropSize, cropSize) else null
+}
+
+private fun Face.passedBlink(
+    now: Long,
+    closedEyes: ConcurrentHashMap<Int, Boolean>,
+    lastBlinkAt: ConcurrentHashMap<Int, Long>
+): Boolean {
+    val id = trackingId ?: return false
+    val left = leftEyeOpenProbability ?: return false
+    val right = rightEyeOpenProbability ?: return false
+    if (left < 0.3f && right < 0.3f) closedEyes[id] = true
+    else if (left > 0.7f && right > 0.7f && closedEyes.remove(id) == true) lastBlinkAt[id] = now
+    return lastBlinkAt[id]?.let { now - it <= LIVE_WINDOW_MS } == true
 }
 
 private fun FloatArray.toBytes(): ByteArray = ByteBuffer.allocate(size * 4)
