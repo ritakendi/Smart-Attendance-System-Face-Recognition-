@@ -8,7 +8,7 @@ An Android attendance app that uses face matching to mark registered students pr
 - Capture and save multiple face embeddings for each student.
 - Scan one or more faces and automatically mark recognized students once per day.
 - View daily reports by date and filter by student or class; manually mark or undo attendance.
-- View monthly days-present summaries and export daily or monthly reports as CSV.
+- View monthly days-present summaries and export daily or monthly reports as CSV or PDF.
 
 ## Run the app
 
@@ -33,7 +33,7 @@ On Windows, use `gradlew.bat` instead of `./gradlew`.
 1. Choose **Register Student**, read the privacy notice, confirm consent, and enter the student’s name and class.
 2. Open **View Students**, choose **Add face**, point the front camera at the student, and tap **Save face sample**. Repeat to add more samples.
 3. Choose **Take Attendance** and allow camera access. Recognized students are marked automatically; no attendance save button is needed.
-4. Open **View Reports** to review daily attendance, correct a daily entry, switch to a monthly summary, or export the current report as CSV.
+4. Open **View Reports** to review daily attendance, correct a daily entry, switch to a monthly summary, or export the current report as CSV or PDF.
 
 ## Face data and privacy
 
@@ -50,4 +50,4 @@ The face-embedding model is MobileFaceNet from Qualcomm AI Hub, licensed under A
 - Multi-face scanning is implemented, but classroom accuracy and performance still need on-device verification.
 - The app has no liveness check, so a photo or video may be used to spoof a face match.
 - Monthly reports show days present; the app does not track scheduled school days or calculate absences.
-- CSV export is available; PDF export and consent revocation controls are not implemented.
+- Consent revocation controls are not implemented.

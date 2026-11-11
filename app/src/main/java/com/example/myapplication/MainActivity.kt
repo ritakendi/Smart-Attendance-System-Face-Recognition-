@@ -1,5 +1,7 @@
 package com.example.myapplication
 
+import android.graphics.Paint
+import android.graphics.pdf.PdfDocument
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -36,6 +38,7 @@ import androidx.compose.ui.platform.LocalContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.OutputStream
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.ListItem
@@ -310,6 +313,33 @@ private fun AttendanceReportScreen(modifier: Modifier = Modifier, onBack: () -> 
             }
         }
     }
+    val exportPdf = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
+        if (uri != null) scope.launch(Dispatchers.IO) {
+            context.contentResolver.openOutputStream(uri)?.use { output ->
+                val lines = buildList {
+                    add("Smart Attendance Report")
+                    add(if (monthly) "Month: $month" else "Date: $date")
+                    if (filter.isNotBlank()) add("Filter: $filter")
+                    add("")
+                    if (monthly) {
+                        add("Student | Class | Days present")
+                        monthlyReportRows.orEmpty().forEach {
+                            add("${it.name} | ${it.className} | ${it.daysPresent}")
+                        }
+                    } else {
+                        add("Student | Class | Status | Time")
+                        reportRows.orEmpty().forEach {
+                            val time = it.markedAt?.let { stamp ->
+                                SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(stamp))
+                            }.orEmpty()
+                            add("${it.name} | ${it.className} | ${if (time.isEmpty()) "Not recorded" else "Present"} | $time")
+                        }
+                    }
+                }
+                writeAttendancePdf(output, lines)
+            }
+        }
+    }
 
     LaunchedEffect(date, month, monthly, refresh) {
         val dao = AppDatabase.getInstance(context).attendanceDao()
@@ -339,6 +369,12 @@ private fun AttendanceReportScreen(modifier: Modifier = Modifier, onBack: () -> 
             enabled = if (monthly) monthlyReportRows != null else reportRows != null
         ) {
             Text("Export CSV")
+        }
+        Button(
+            onClick = { exportPdf.launch("attendance-${if (monthly) month else date}.pdf") },
+            enabled = if (monthly) monthlyReportRows != null else reportRows != null
+        ) {
+            Text("Export PDF")
         }
         if (monthly) {
             when {
@@ -399,6 +435,23 @@ private fun AttendanceReportScreen(modifier: Modifier = Modifier, onBack: () -> 
 }
 
 private fun String.csv() = "\"${replace("\"", "\"\"")}\""
+
+private fun writeAttendancePdf(output: OutputStream, lines: List<String>) {
+    val document = PdfDocument()
+    val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 12f }
+    try {
+        lines.chunked(36).forEachIndexed { index, pageLines ->
+            val page = document.startPage(PdfDocument.PageInfo.Builder(595, 842, index + 1).create())
+            pageLines.forEachIndexed { line, text ->
+                page.canvas.drawText(text.take(86), 40f, 50f + line * 20f, paint)
+            }
+            document.finishPage(page)
+        }
+        document.writeTo(output)
+    } finally {
+        document.close()
+    }
+}
 
 @Composable
 private fun PlaceholderScreen(
